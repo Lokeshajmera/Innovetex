@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeoVision Smart Glasses OS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#020b12;--panel:#071828;--panel2:#050f1a;--b:rgba(0,245,255,0.15);--c:#00f5ff;--p:#7b2fff;--r:#ff2d78;--g:#00ff88;--amber:#ffaa00;--t:#c8e8f4;--d:#3a5a6a;--glow:0 0 20px rgba(0,245,255,0.25);--pglow:0 0 20px rgba(123,47,255,0.25);--rglow:0 0 20px rgba(255,45,120,0.25)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--t);font-family:'Rajdhani',sans-serif;overflow:hidden}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,245,255,0.012) 2px,rgba(0,245,255,0.012) 4px);pointer-events:none;z-index:9999}
+#root{display:grid;grid-template-rows:52px 1fr 42px;height:100vh;max-height:100vh}
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--b);background:rgba(2,11,18,0.97);backdrop-filter:blur(12px);z-index:100}
+.logo{font-family:'Orbitron',monospace;font-size:1.1rem;font-weight:900;color:var(--c);letter-spacing:5px;text-shadow:var(--glow)}
+.logo em{color:var(--p);font-style:normal}
+.status-row{display:flex;gap:18px;align-items:center;font-family:'Share Tech Mono',monospace;font-size:0.68rem}
+.sitem{display:flex;align-items:center;gap:5px;color:var(--d)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--d);flex-shrink:0}
+.dot.on{background:var(--g);box-shadow:0 0 6px var(--g);animation:blink 2s infinite}
+.dot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.dot.err{background:var(--r);box-shadow:0 0 6px var(--r)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+#clockEl{font-family:'Share Tech Mono',monospace;font-size:0.75rem;color:var(--c);letter-spacing:2px}
+#main{display:grid;grid-template-columns:400px 1fr 300px;gap:0;overflow:hidden}
+#left{background:var(--panel2);border-right:1px solid var(--b);display:flex;flex-direction:column;overflow:hidden}
+.tab-bar{display:flex;border-bottom:1px solid var(--b)}
+.ptab{flex:1;padding:10px 4px;text-align:center;font-family:'Share Tech Mono',monospace;font-size:0.58rem;letter-spacing:1px;color:var(--d);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s}
+.ptab.active{color:var(--c);border-bottom-color:var(--c);background:rgba(0,245,255,0.04)}
+.ptab.active.pp{color:var(--p);border-bottom-color:var(--p)}
+.ptab.active.rr{color:var(--r);border-bottom-color:var(--r)}
+.pane{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:9px}
+.pane.active{display:flex}
+#center{display:flex;flex-direction:column;background:#000;position:relative;overflow:hidden}
+#camWrap{flex:1;position:relative;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;min-height:0}
+#camFeed{width:100%;height:100%;object-fit:cover;display:none}
+#camFeed.active{display:block}
+#camPlaceholder{display:flex;flex-direction:column;align-items:center;gap:10px;opacity:0.25}
+#camPlaceholder .bigicon{font-size:3.5rem}
+#camPlaceholder .txt{font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:3px;color:var(--c)}
+#gestureOverlay{position:absolute;top:12px;left:12px;background:rgba(0,0,0,0.75);border:1px solid var(--g);border-radius:7px;padding:7px 12px;display:none;font-family:'Share Tech Mono',monospace;font-size:0.75rem;color:var(--g)}
+#gestureOverlay.vis{display:block;animation:fi 0.3s ease}
+@keyframes fi{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+#fpsOverlay{position:absolute;top:10px;right:10px;font-family:'Share Tech Mono',monospace;font-size:0.65rem;color:rgba(0,245,255,0.6);background:rgba(0,0,0,0.5);padding:3px 8px;border-radius:3px}
+.camcorner{position:absolute;width:22px;height:22px;border-color:var(--c);border-style:solid;opacity:0.55;pointer-events:none}
+.cc-tl{top:8px;left:8px;border-width:2px 0 0 2px}.cc-tr{top:8px;right:8px;border-width:2px 2px 0 0}.cc-bl{bottom:8px;left:8px;border-width:0 0 2px 2px}.cc-br{bottom:8px;right:8px;border-width:0 2px 2px 0}
+#scanBar{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--c),transparent);opacity:0;pointer-events:none;animation:scanAnim 3s linear infinite}
+.cam-active #scanBar{opacity:0.5}
+@keyframes scanAnim{0%{top:0%;opacity:0}5%{opacity:0.5}95%{opacity:0.5}100%{top:100%;opacity:0}}
+#yoloBadges{position:absolute;bottom:52px;left:8px;right:8px;display:flex;flex-wrap:wrap;gap:4px;z-index:10}
+.yolo-badge{background:rgba(0,0,0,0.78);border:1px solid rgba(0,245,255,0.35);border-radius:4px;padding:3px 7px;font-family:'Share Tech Mono',monospace;font-size:0.57rem;color:var(--c)}
+#camControls{display:flex;gap:7px;padding:9px 10px;border-top:1px solid var(--b);background:rgba(5,15,26,0.97)}
+.cc-btn{flex:1;padding:8px;border-radius:6px;border:1px solid;font-family:'Share Tech Mono',monospace;font-size:0.62rem;letter-spacing:1px;cursor:pointer;transition:all 0.2s;background:transparent}
+.cc-btn.cyan{color:var(--c);border-color:var(--c)}.cc-btn.cyan:hover{background:rgba(0,245,255,0.1)}
+.cc-btn.amber{color:var(--amber);border-color:var(--amber)}.cc-btn.amber:hover{background:rgba(255,170,0,0.1)}
+.cc-btn.pink{color:var(--r);border-color:var(--r)}.cc-btn.pink:hover{background:rgba(255,45,120,0.1)}
+.cc-btn:disabled{opacity:0.3;cursor:not-allowed}
+#right{background:#000;border-left:1px solid var(--b);display:flex;flex-direction:column;position:relative;overflow:hidden}
+#right::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,245,255,0.014) 3px,rgba(0,245,255,0.014) 4px);pointer-events:none;z-index:0}
+.lens-frame{position:absolute;inset:8px;border:1.5px solid rgba(0,245,255,0.18);border-radius:16px;pointer-events:none;z-index:5}
+.lens-corner{position:absolute;width:16px;height:16px;border-color:var(--c);border-style:solid;opacity:0.55;z-index:6}
+.lc-tl{top:12px;left:12px;border-width:2px 0 0 2px}.lc-tr{top:12px;right:12px;border-width:2px 2px 0 0}.lc-bl{bottom:12px;left:12px;border-width:0 0 2px 2px}.lc-br{bottom:12px;right:12px;border-width:0 2px 2px 0}
+.lens-hud-t{position:absolute;top:16px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:center;font-family:'Share Tech Mono',monospace;font-size:0.58rem;color:rgba(0,245,255,0.5);z-index:10;letter-spacing:2px}
+.lens-hud-b{position:absolute;bottom:14px;left:18px;right:18px;display:flex;justify-content:space-between;font-family:'Share Tech Mono',monospace;font-size:0.52rem;color:rgba(0,245,255,0.35);z-index:10}
+.lens-logo{font-family:'Orbitron',monospace;font-size:0.65rem;font-weight:900;color:var(--c)}
+.ldot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--g);margin-right:4px;animation:blink 2s infinite}
+#lensContent{position:absolute;top:44px;bottom:38px;left:14px;right:14px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:7px;z-index:8;overflow:hidden}
+.lcard{width:100%;border-radius:9px;padding:9px 11px;display:none;animation:lcIn 0.4s ease}
+@keyframes lcIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.lcard.vis{display:block}
+.lcard.cc{background:rgba(0,245,255,0.05);border:1px solid rgba(0,245,255,0.2)}
+.lcard.pp{background:rgba(123,47,255,0.05);border:1px solid rgba(123,47,255,0.2)}
+.lcard.rr{background:rgba(255,45,120,0.05);border:1px solid rgba(255,45,120,0.2)}
+.ltag{font-family:'Share Tech Mono',monospace;font-size:0.52rem;letter-spacing:2px;margin-bottom:4px;opacity:0.75}
+.ltag.cc{color:var(--c)}.ltag.pp{color:var(--p)}.ltag.rr{color:var(--r)}
+.lbig{font-size:0.95rem;color:#fff;line-height:1.3;margin-bottom:2px}
+.lsmall{font-size:0.6rem;color:var(--d);font-family:'Share Tech Mono',monospace;letter-spacing:1px}
+.conf-row{display:flex;align-items:center;gap:5px;margin-top:4px}
+.mini-bar{flex:1;height:2px;background:rgba(255,255,255,0.08);border-radius:1px;overflow:hidden}
+.mini-fill{height:100%;border-radius:1px;transition:width 1s ease}
+#idleDisp{display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0.2}
+.idle-ring{width:44px;height:44px;border:1px solid var(--c);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;animation:spin 8s linear infinite;position:relative}
+.idle-ring::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:1px solid transparent;border-top-color:var(--c);animation:spin 2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.idle-txt{font-family:'Share Tech Mono',monospace;font-size:0.58rem;letter-spacing:3px;color:var(--c)}
+.nav-mapgrid{width:100%;height:40px;background-image:linear-gradient(rgba(255,45,120,0.1)1px,transparent 1px),linear-gradient(90deg,rgba(255,45,120,0.1)1px,transparent 1px);background-size:14px 14px;border-radius:4px;position:relative;margin-top:6px;overflow:hidden}
+.ndot-from{position:absolute;left:16%;top:50%;transform:translate(-50%,-50%);width:5px;height:5px;background:var(--g);border-radius:50%}
+.ndot-to{position:absolute;right:14%;top:28%;transform:translate(50%,-50%);width:7px;height:7px;background:var(--r);border-radius:50%;animation:pp2 1.5s infinite}
+@keyframes pp2{0%,100%{box-shadow:0 0 3px var(--r)}50%{box-shadow:0 0 10px var(--r)}}
+.nline{position:absolute;left:18%;top:33%;right:17%;height:2px;background:linear-gradient(90deg,var(--g),var(--r));transform:rotate(-7deg);opacity:0.5}
+#bottombar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-top:1px solid var(--b);background:rgba(2,11,18,0.97);font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--d)}
+.fl{font-family:'Share Tech Mono',monospace;font-size:0.58rem;letter-spacing:1.5px;color:var(--d);text-transform:uppercase;margin-bottom:3px;display:block}
+.fi{width:100%;background:#0a1e2c;border:1px solid var(--b);color:var(--t);padding:7px 10px;border-radius:5px;font-family:'Share Tech Mono',monospace;font-size:0.75rem;outline:none;transition:border-color 0.2s;appearance:none}
+.fi:focus{border-color:var(--c)}
+.fi.pp:focus{border-color:var(--p)}
+select.fi option{background:#071828}
+textarea.fi{resize:none;height:62px}
+.nvbtn{width:100%;padding:8px;border-radius:6px;border:1px solid;font-family:'Share Tech Mono',monospace;font-size:0.62rem;letter-spacing:1px;cursor:pointer;transition:all 0.2s;background:transparent;margin-top:3px}
+.nvbtn.c{color:var(--c);border-color:var(--c)}.nvbtn.c:hover{background:rgba(0,245,255,0.1)}
+.nvbtn.p{color:var(--p);border-color:var(--p)}.nvbtn.p:hover{background:rgba(123,47,255,0.1)}
+.nvbtn.r{color:var(--r);border-color:var(--r)}.nvbtn.r:hover{background:rgba(255,45,120,0.1)}
+.nvbtn.g{color:var(--g);border-color:var(--g)}.nvbtn.g:hover{background:rgba(0,255,136,0.07)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.outbox{background:#020c14;border:1px solid var(--b);border-radius:6px;padding:9px 11px;min-height:48px;font-family:'Share Tech Mono',monospace;font-size:0.72rem;line-height:1.65;position:relative}
+.outbox.green{color:var(--g)}.outbox.purple{color:#b388ff}.outbox.pink{color:#ff6699}
+.dim{color:var(--d)}
+.tr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.tog{position:relative;width:32px;height:18px}
+.tog input{opacity:0;width:0;height:0;position:absolute}
+.tsl{position:absolute;inset:0;background:#0a1e2c;border:1px solid var(--b);border-radius:18px;cursor:pointer;transition:0.3s}
+.tsl::before{content:'';position:absolute;width:11px;height:11px;left:2px;top:2px;background:var(--d);border-radius:50%;transition:0.3s}
+.tog input:checked+.tsl{background:rgba(0,245,255,0.15);border-color:var(--c)}
+.tog input:checked+.tsl::before{transform:translateX(14px);background:var(--c)}
+.shr{font-family:'Orbitron',monospace;font-size:0.58rem;letter-spacing:2px;color:var(--d);padding-bottom:6px;border-bottom:1px solid var(--b);margin-bottom:7px}
+.shr.c{color:rgba(0,245,255,0.45)}.shr.p{color:rgba(123,47,255,0.45)}.shr.r{color:rgba(255,45,120,0.45)}
+#ocrPreview{width:100%;height:120px;background:#010810;border:1px solid var(--b);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;cursor:pointer;transition:border-color 0.2s}
+#ocrPreview:hover{border-color:var(--p)}
+#ocrPreview img{width:100%;height:100%;object-fit:contain;display:none}
+#ocrPreviewTxt{font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--d);text-align:center;padding:8px}
+#ocrFileInput{display:none}
+.cb{display:inline-block;padding:1px 6px;border-radius:3px;font-family:'Share Tech Mono',monospace;font-size:0.58rem;border:1px solid;margin-left:5px}
+.cb.hi{color:var(--g);border-color:var(--g)}.cb.mid{color:var(--amber);border-color:var(--amber)}.cb.lo{color:var(--r);border-color:var(--r)}
+#gesHistory{display:flex;flex-direction:column;gap:3px;max-height:90px;overflow-y:auto}
+.gi{display:flex;align-items:center;gap:7px;padding:4px 7px;background:rgba(0,245,255,0.04);border-radius:4px;font-family:'Share Tech Mono',monospace;font-size:0.62rem;animation:fi 0.3s ease}
+#txBig{font-size:1.6rem;color:#fff;text-shadow:0 0 20px rgba(123,47,255,0.45);margin:5px 0;line-height:1.2;min-height:38px}
+#toast{position:fixed;bottom:50px;right:14px;background:var(--panel);border:1px solid var(--c);border-radius:8px;padding:9px 15px;font-family:'Share Tech Mono',monospace;font-size:0.68rem;color:var(--c);transform:translateX(120%);transition:transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275);z-index:9998;max-width:240px;box-shadow:var(--glow)}
+#toast.show{transform:translateX(0)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--b);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root">
+<div id="topbar">
+  <div class="logo">NEO<em>VISION</em></div>
+  <div class="status-row">
+    <div class="sitem"><div class="dot warn" id="dYolo"></div>YOLO</div>
+    <div class="sitem"><div class="dot warn" id="dMP"></div>MEDIAPIPE</div>
+    <div class="sitem"><div class="dot warn" id="dOCR"></div>OCR</div>
+    <div class="sitem"><div class="dot warn" id="dTx"></div>TRANSLATE</div>
+    <div class="sitem"><div class="dot err" id="dCam"></div>CAMERA</div>
+  </div>
+  <div id="clockEl">--:--:--</div>
+</div>
+<div id="main">
+  <!-- LEFT -->
+  <div id="left">
+    <div class="tab-bar">
+      <div class="ptab active" onclick="sw(0)">SIGN</div>
+      <div class="ptab" onclick="sw(1)">TRANSLATE</div>
+      <div class="ptab" onclick="sw(2)">OCR</div>
+      <div class="ptab" onclick="sw(3)">NAV</div>
+    </div>
+    <!-- SIGN -->
+    <div class="pane active" id="tab0">
+      <div class="shr c">SIGN LANGUAGE DETECTION</div>
+      <div class="tr"><span style="font-size:0.8rem">Auto-detect from camera</span><label class="tog"><input type="checkbox" id="autoSign" checked><span class="tsl"></span></label></div>
+      <div class="tr"><span style="font-size:0.8rem">Voice readout (TTS)</span><label class="tog"><input type="checkbox" id="ttsOn" checked><span class="tsl"></span></label></div>
+      <div class="tr"><span style="font-size:0.8rem">Send to lens display</span><label class="tog"><input type="checkbox" id="signToLens" checked><span class="tsl"></span></label></div>
+      <span class="fl">Translation language</span>
+      <select class="fi" id="signLang"><option value="hi">Hindi (हिन्दी)</option><option value="mr">Marathi (मराठी)</option></select>
+      <button class="nvbtn c" onclick="simSign()">▶ SIMULATE GESTURE</button>
+      <div class="outbox green" id="signOut"><span class="dim">Gesture output...</span></div>
+      <div class="outbox purple" id="signTxOut" style="margin-top:5px"><span class="dim">Translation...</span></div>
+      <div class="shr c" style="margin-top:6px">HISTORY</div>
+      <div id="gesHistory"></div>
+    </div>
+    <!-- TRANSLATE -->
+    <div class="pane" id="tab1">
+      <div class="shr p">LANGUAGE TRANSLATION</div>
+      <span class="fl">Source language</span>
+      <select class="fi pp" id="srcLang"><option value="auto">Auto-detect</option><option value="en">English</option><option value="fr">French</option><option value="de">German</option><option value="es">Spanish</option><option value="ja">Japanese</option><option value="zh">Chinese</option><option value="ar">Arabic</option><option value="ru">Russian</option></select>
+      <span class="fl">Target</span>
+      <select class="fi pp" id="tgtLang"><option value="hi">Hindi (हिन्दी)</option><option value="mr">Marathi (मराठी)</option></select>
+      <span class="fl">Input text</span>
+      <textarea class="fi pp" id="txInput" placeholder="Type or paste foreign text..."></textarea>
+      <div class="row2"><button class="nvbtn p" onclick="doTranslate()">TRANSLATE</button><button class="nvbtn g" onclick="startMic()" style="font-size:0.6rem">🎤 MIC INPUT</button></div>
+      <div class="tr" style="margin-top:6px"><span style="font-size:0.8rem">Read aloud</span><label class="tog"><input type="checkbox" id="readAloud" checked><span class="tsl"></span></label></div>
+      <div id="txBig"><span class="dim" style="font-size:0.85rem">Result...</span></div>
+      <div class="outbox purple" id="txOut"><span class="dim">Output here...</span></div>
+    </div>
+    <!-- OCR -->
+    <div class="pane" id="tab2">
+      <div class="shr r">OCR — LETTER / TEXT RECOGNITION</div>
+      <span class="fl">Upload image or capture frame</span>
+      <div id="ocrPreview" onclick="document.getElementById('ocrFileInput').click()">
+        <img id="ocrImg" alt="">
+        <div id="ocrPreviewTxt">📷 Click to upload image<br><span style="font-size:0.55rem;opacity:0.6">or use CAPTURE FRAME below</span></div>
+      </div>
+      <input type="file" id="ocrFileInput" accept="image/*" onchange="loadOcrImage(event)">
+      <div class="row2" style="margin-top:7px"><button class="nvbtn r" onclick="captureForOcr()" style="font-size:0.6rem">📸 CAPTURE FRAME</button><button class="nvbtn r" onclick="runOcr()" style="font-size:0.6rem">🔍 RUN OCR</button></div>
+      <span class="fl" style="margin-top:7px">Translate to</span>
+      <select class="fi" id="ocrLang"><option value="hi">Hindi (हिन्दी)</option><option value="mr">Marathi (मराठी)</option></select>
+      <div class="outbox" id="ocrTextOut" style="color:var(--t)"><span class="dim">OCR output...</span></div>
+      <div class="outbox purple" id="ocrTxOut" style="margin-top:5px"><span class="dim">Translation...</span></div>
+    </div>
+    <!-- NAV -->
+    <div class="pane" id="tab3">
+      <div class="shr r">AR NAVIGATION</div>
+      <span class="fl">Starting point</span>
+      <input type="text" class="fi" id="navFrom" value="Nashik, Maharashtra">
+      <span class="fl">Destination</span>
+      <input type="text" class="fi" id="navTo" placeholder="e.g. Mumbai Airport">
+      <span class="fl">Travel mode</span>
+      <select class="fi" id="navMode"><option value="walking">🚶 Walking</option><option value="driving">🚗 Driving</option><option value="transit">🚌 Transit</option><option value="bicycling">🚲 Cycling</option></select>
+      <div class="tr"><span style="font-size:0.8rem">AR overlay on lens</span><label class="tog"><input type="checkbox" id="arOn" checked><span class="tsl"></span></label></div>
+      <div class="row2" style="margin-top:5px"><button class="nvbtn r" onclick="openMaps()">OPEN MAPS</button><button class="nvbtn r" onclick="sendNavToLens()" style="font-size:0.6rem">📡 TO LENS</button></div>
+      <div class="outbox pink" id="navOut" style="margin-top:7px"><span class="dim">Route info...</span></div>
+    </div>
+  </div>
+  <!-- CENTER: CAMERA -->
+  <div id="center">
+    <div id="camWrap">
+      <div class="camcorner cc-tl"></div><div class="camcorner cc-tr"></div>
+      <div class="camcorner cc-bl"></div><div class="camcorner cc-br"></div>
+      <div id="scanBar"></div>
+      <img id="camFeed" alt="Camera feed">
+      <div id="camPlaceholder">
+        <div class="bigicon">👓</div>
+        <div class="txt">CAMERA INACTIVE</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:0.58rem;color:var(--d);margin-top:4px">Start camera for live vision pipeline</div>
+      </div>
+      <div id="gestureOverlay"></div>
+      <div id="fpsOverlay">FPS: --</div>
+      <div id="yoloBadges"></div>
+    </div>
+    <div id="camControls">
+      <button class="cc-btn cyan" id="camToggleBtn" onclick="toggleCamera()">▶ START CAMERA</button>
+      <button class="cc-btn amber" id="captureBtn" onclick="captureFrame()" disabled>📷 CAPTURE</button>
+      <button class="cc-btn pink" id="ocrCapBtn" onclick="captureForOcr()" disabled>🔍 CAPTURE FOR OCR</button>
+    </div>
+  </div>
+  <!-- RIGHT: LENS -->
+  <div id="right">
+    <div class="lens-frame"></div>
+    <div class="lens-corner lc-tl"></div><div class="lens-corner lc-tr"></div>
+    <div class="lens-corner lc-bl"></div><div class="lens-corner lc-br"></div>
+    <div class="lens-hud-t">
+      <div class="lens-logo">LENS</div>
+      <div><span class="ldot"></span>LIVE</div>
+      <div id="lTime">--:--</div>
+    </div>
+    <div id="lensContent">
+      <div id="idleDisp"><div class="idle-ring">👓</div><div class="idle-txt">AWAITING</div></div>
+      <div class="lcard cc" id="lSign">
+        <div class="ltag cc">SIGN DETECTED</div>
+        <div id="lGestEmoji" style="font-size:1.5rem;margin-bottom:3px">🤟</div>
+        <div class="lbig" id="lGestText">—</div>
+        <div class="lsmall" id="lGestTx" style="color:#b388ff;margin-top:2px">—</div>
+        <div class="conf-row"><span class="lsmall" id="lGestConf">CONF: —</span><div class="mini-bar"><div class="mini-fill" id="lGestBar" style="width:0%;background:linear-gradient(90deg,var(--c),var(--g))"></div></div></div>
+      </div>
+      <div class="lcard pp" id="lTx">
+        <div class="ltag pp">TRANSLATION</div>
+        <div class="lsmall" id="lTxOrig" style="margin-bottom:4px">—</div>
+        <div class="lbig" id="lTxResult">—</div>
+        <div class="lsmall" id="lTxLang" style="color:var(--p);margin-top:2px">—</div>
+      </div>
+      <div class="lcard rr" id="lNav">
+        <div class="ltag rr">AR NAVIGATION</div>
+        <div id="lNavIcon" style="font-size:1.3rem;margin-bottom:2px">🧭</div>
+        <div class="lbig" id="lNavDest" style="font-size:0.8rem">—</div>
+        <div class="lsmall" id="lNavMode">MODE: —</div>
+        <div class="nav-mapgrid"><div class="ndot-from"></div><div class="ndot-to"></div><div class="nline"></div></div>
+      </div>
+      <div class="lcard pp" id="lOcr">
+        <div class="ltag pp">OCR RESULT</div>
+        <div class="lsmall" id="lOcrRaw" style="margin-bottom:3px">—</div>
+        <div class="lbig" id="lOcrTx" style="font-size:0.9rem">—</div>
+      </div>
+    </div>
+    <div class="lens-hud-b"><div id="lMods">0 ACTIVE</div><div>NeoVision OS</div><div>GPS ON</div></div>
+  </div>
+</div>
+<div id="bottombar">
+  <span>NeoVision v2.5 &nbsp;|&nbsp; YOLO v8 + OpenCV + MediaPipe + Tesseract OCR</span>
+  <span>Modules: <span id="bMods" style="color:var(--c)">0/4</span></span>
+  <span>Server: <span id="connStatus" style="color:var(--r)">DISCONNECTED</span></span>
+</div>
+</div>
+<div id="toast"></div>
+<script>
+const socket=io();
+let camRunning=false,capturedOcrImage=null,modState={sign:false,tx:false,nav:false,ocr:false};
+let gesHistory=[],simIdx=0;
+const signsDemo=[
+  {key:"prayer",emoji:"🙏",text:"Thank you / Please",conf:97},
+  {key:"open_hand",emoji:"✋",text:"Hello / Hi there",conf:96},
+  {key:"love_you",emoji:"🤟",text:"I love you",conf:95},
+  {key:"thumbs_up",emoji:"👍",text:"Good / Okay",conf:93},
+  {key:"peace",emoji:"✌",text:"Peace / Two / Victory",conf:89},
+  {key:"fist",emoji:"✊",text:"Stop / No",conf:94},
+  {key:"pointing",emoji:"👆",text:"Look / Over there",conf:88},
+  {key:"ok_sign",emoji:"👌",text:"Perfect / Okay",conf:90},
+  {key:"wave",emoji:"👋",text:"Goodbye / See you",conf:93},
+];
+function tick(){const t=new Date().toLocaleTimeString('en-IN',{hour12:false});document.getElementById('clockEl').textContent=t;document.getElementById('lTime').textContent=t.slice(0,5)}
+tick();setInterval(tick,1000);
+function toast(msg,col){col=col||'var(--c)';const el=document.getElementById('toast');el.textContent=msg;el.style.borderColor=col;el.style.color=col;el.style.boxShadow=`0 0 20px ${col}44`;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),3000)}
+function updateStatus(d){const map={yolo:'dYolo',mediapipe:'dMP',ocr:'dOCR',translator:'dTx'};for(const[k,id]of Object.entries(map)){const el=document.getElementById(id);el.className=d[k]?'dot on':'dot warn'}}
+socket.on('connect',()=>{document.getElementById('connStatus').textContent='CONNECTED';document.getElementById('connStatus').style.color='var(--g)';fetch('/api/status').then(r=>r.json()).then(updateStatus);toast('Connected to NeoVision server')});
+socket.on('disconnect',()=>{document.getElementById('connStatus').textContent='DISCONNECTED';document.getElementById('connStatus').style.color='var(--r)'});
+socket.on('camera_ready',d=>{camRunning=true;document.getElementById('camToggleBtn').textContent='■ STOP CAMERA';document.getElementById('captureBtn').disabled=false;document.getElementById('ocrCapBtn').disabled=false;document.getElementById('dCam').className='dot on';document.getElementById('camWrap').classList.add('cam-active');toast(`Camera ready: ${d.width}×${d.height}`)});
+socket.on('camera_error',d=>{toast('Camera error: '+d.msg,'var(--r)');camRunning=false;document.getElementById('camToggleBtn').textContent='▶ START CAMERA'});
+socket.on('frame',d=>{const img=document.getElementById('camFeed');img.src='data:image/jpeg;base64,'+d.img;img.classList.add('active');document.getElementById('camPlaceholder').style.display='none';document.getElementById('fpsOverlay').textContent=`FPS: ${d.fps}`;const badges=document.getElementById('yoloBadges');badges.innerHTML='';(d.detections||[]).forEach(det=>{const b=document.createElement('div');b.className='yolo-badge';b.textContent=`${det.label} ${Math.round(det.conf*100)}%`;badges.appendChild(b)})});
+socket.on('gesture',d=>{if(!document.getElementById('autoSign').checked)return;handleGesture(d)});
+socket.on('translation_result',d=>showTranslation(d));
+socket.on('ocr_result',d=>handleOcrResult(d));
+function toggleCamera(){if(!camRunning){socket.emit('start_camera');document.getElementById('camToggleBtn').textContent='...STARTING'}else{socket.emit('stop_camera');camRunning=false;document.getElementById('camFeed').classList.remove('active');document.getElementById('camPlaceholder').style.display='';document.getElementById('camToggleBtn').textContent='▶ START CAMERA';document.getElementById('captureBtn').disabled=true;document.getElementById('ocrCapBtn').disabled=true;document.getElementById('dCam').className='dot err';document.getElementById('camWrap').classList.remove('cam-active');document.getElementById('yoloBadges').innerHTML=''}}
+function captureFrame(){const img=document.getElementById('camFeed');if(!img.classList.contains('active'))return;const c=document.createElement('canvas');c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;c.getContext('2d').drawImage(img,0,0);const b64=c.toDataURL('image/jpeg',0.92);const a=document.createElement('a');a.href=b64;a.download=`neovision_${Date.now()}.jpg`;a.click();toast('Frame captured')}
+function handleGesture(data){const lang=document.getElementById('signLang').value;const so=document.getElementById('signOut');const cls=data.conf>=90?'hi':data.conf>=75?'mid':'lo';so.innerHTML=`<span class="dim" style="font-size:0.58rem">GESTURE</span><br>${data.emoji||'🤟'} <span style="font-size:1rem;color:#fff">${data.text}</span><span class="cb ${cls}">${data.conf}%</span>`;const go=document.getElementById('gestureOverlay');go.innerHTML=`${data.emoji||'🤟'} ${data.text}`;go.classList.add('vis');setTimeout(()=>go.classList.remove('vis'),3000);if(document.getElementById('signToLens').checked)showOnLens('sign',data);if(document.getElementById('ttsOn').checked)speak(data.text);socket.emit('translate_sign',{text:data.text,lang});addGesHistory(data);setMod('sign',true)}
+function simSign(){handleGesture(signsDemo[simIdx%signsDemo.length]);simIdx++}
+function addGesHistory(data){gesHistory.unshift(data);if(gesHistory.length>5)gesHistory=gesHistory.slice(0,5);document.getElementById('gesHistory').innerHTML=gesHistory.map(g=>`<div class="gi"><span style="font-size:0.95rem;width:18px">${g.emoji||'🤟'}</span><span style="flex:1;font-size:0.62rem">${g.text}</span><span class="cb ${g.conf>=90?'hi':g.conf>=75?'mid':'lo'}">${g.conf}%</span></div>`).join('')}
+function showTranslation(data){const el=document.getElementById('signTxOut');if(el)el.innerHTML=`<span class="dim" style="font-size:0.58rem">${data.lang.toUpperCase()}</span><br><span style="font-size:1rem">${data.translated||'—'}</span>`;document.getElementById('lGestTx').textContent=data.translated||'—'}
+function doTranslate(){const text=document.getElementById('txInput').value.trim();const lang=document.getElementById('tgtLang').value;if(!text){toast('Enter text','var(--r)');return}document.getElementById('txBig').innerHTML='<span class="dim">Translating...</span>';fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,lang})}).then(r=>r.json()).then(data=>{if(data.error){toast(data.error,'var(--r)');return}const ln=lang==='hi'?'Hindi':'Marathi';document.getElementById('txBig').textContent=data.translated||'—';document.getElementById('txOut').innerHTML=`<span class="dim" style="font-size:0.58rem">${ln} · ${data.method}</span><br>${data.translated}`;if(document.getElementById('readAloud').checked)speak(data.translated,lang);showOnLens('tx',{orig:text,result:data.translated,lang:ln});setMod('tx',true);toast(`Translated to ${ln}`)}).catch(()=>toast('Server error','var(--r)'))}
+function startMic(){if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){toast('Speech recognition not supported','var(--r)');return}const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const rec=new SR();const src=document.getElementById('srcLang').value;rec.lang=src==='auto'?'en-US':src;rec.start();toast('🎤 Listening...');rec.onresult=e=>{document.getElementById('txInput').value=e.results[0][0].transcript;doTranslate()};rec.onerror=()=>toast('Mic error','var(--r)')}
+function loadOcrImage(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{capturedOcrImage=ev.target.result;const img=document.getElementById('ocrImg');img.src=capturedOcrImage;img.style.display='block';document.getElementById('ocrPreviewTxt').style.display='none';toast('Image loaded — click RUN OCR')};reader.readAsDataURL(file)}
+function captureForOcr(){const feed=document.getElementById('camFeed');if(!feed.classList.contains('active')){toast('Start camera first','var(--r)');return}const c=document.createElement('canvas');c.width=feed.naturalWidth||feed.width||1280;c.height=feed.naturalHeight||feed.height||720;c.getContext('2d').drawImage(feed,0,0);capturedOcrImage=c.toDataURL('image/jpeg',0.95);const img=document.getElementById('ocrImg');img.src=capturedOcrImage;img.style.display='block';document.getElementById('ocrPreviewTxt').style.display='none';sw(2);toast('Frame captured for OCR')}
+function runOcr(){if(!capturedOcrImage){toast('Capture or upload image first','var(--r)');return}const lang=document.getElementById('ocrLang').value;document.getElementById('ocrTextOut').innerHTML='<span class="dim">Running OCR pipeline...</span>';document.getElementById('ocrTxOut').innerHTML='<span class="dim">Translating...</span>';fetch('/api/ocr',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:capturedOcrImage,lang})}).then(r=>r.json()).then(handleOcrResult).catch(()=>toast('OCR error','var(--r)'))}
+function handleOcrResult(data){if(!data.success){document.getElementById('ocrTextOut').innerHTML=`<span style="color:var(--r)">Error: ${data.error}</span>`;return}const conf=data.confidence||0;const cls=conf>=80?'hi':conf>=50?'mid':'lo';document.getElementById('ocrTextOut').innerHTML=`<span class="dim" style="font-size:0.58rem">METHOD: ${(data.method||'').toUpperCase()} &nbsp; CHARS: ${data.char_count||0}</span><br><span style="font-size:0.9rem;color:#fff">${data.text||'No text detected'}</span><span class="cb ${cls}">${conf.toFixed(0)}%</span>`;if(data.translation&&data.translation.translated){const tx=data.translation;const ln=tx.lang==='hi'?'Hindi':'Marathi';document.getElementById('ocrTxOut').innerHTML=`<span class="dim" style="font-size:0.58rem">${ln.toUpperCase()} · ${tx.method}</span><br><span style="font-size:1rem">${tx.translated}</span>`;showOnLens('ocr',{raw:data.text,tx:tx.translated,lang:ln});setMod('ocr',true);toast(`OCR → ${ln}`);if(document.getElementById('readAloud')&&document.getElementById('readAloud').checked)speak(tx.translated,tx.lang)}}
+function openMaps(){const from=document.getElementById('navFrom').value.trim();const to=document.getElementById('navTo').value.trim();const mode=document.getElementById('navMode').value;if(!to){toast('Enter destination','var(--r)');return}window.open(`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=${mode}`,'_blank');document.getElementById('navOut').innerHTML=`<span class="dim" style="font-size:0.58rem">ROUTE</span><br>📍 ${from}<br>🎯 ${to}<br><span class="dim">${mode.toUpperCase()}</span>`;setMod('nav',true);sendNavToLens();toast(`Maps opened → ${to}`)}
+function sendNavToLens(){const to=document.getElementById('navTo').value.trim();const mode=document.getElementById('navMode').value;if(!to){toast('Enter destination','var(--r)');return}const icons={walking:'🚶',driving:'🚗',transit:'🚌',bicycling:'🚲'};showOnLens('nav',{dest:to,mode,icon:icons[mode]||'🧭'});setMod('nav',true);toast('Navigation sent to lens')}
+function showOnLens(type,data){document.getElementById('idleDisp').style.display='none';if(type==='sign'){const c=document.getElementById('lSign');c.classList.remove('vis');void c.offsetWidth;c.classList.add('vis');document.getElementById('lGestEmoji').textContent=data.emoji||'🤟';document.getElementById('lGestText').textContent=data.text;document.getElementById('lGestConf').textContent=`CONF: ${data.conf}%`;document.getElementById('lGestBar').style.width=(data.conf||0)+'%'}
+if(type==='tx'){const c=document.getElementById('lTx');c.classList.remove('vis');void c.offsetWidth;c.classList.add('vis');document.getElementById('lTxOrig').textContent=(data.orig||'').slice(0,32);document.getElementById('lTxResult').textContent=data.result||'—';document.getElementById('lTxLang').textContent=(data.lang||'').toUpperCase()}
+if(type==='nav'){const c=document.getElementById('lNav');c.classList.remove('vis');void c.offsetWidth;c.classList.add('vis');document.getElementById('lNavIcon').textContent=data.icon||'🧭';document.getElementById('lNavDest').textContent='→ '+data.dest;document.getElementById('lNavMode').textContent='MODE: '+(data.mode||'').toUpperCase()}
+if(type==='ocr'){const c=document.getElementById('lOcr');c.classList.remove('vis');void c.offsetWidth;c.classList.add('vis');document.getElementById('lOcrRaw').textContent=(data.raw||'').slice(0,36);document.getElementById('lOcrTx').textContent=data.tx||'—'}
+const n=['lSign','lTx','lNav','lOcr'].filter(id=>document.getElementById(id).classList.contains('vis')).length;document.getElementById('lMods').textContent=n+' ACTIVE'}
+function setMod(k,v){modState[k]=v;document.getElementById('bMods').textContent=Object.values(modState).filter(Boolean).length+'/4'}
+function speak(text,lang){if(!speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);if(lang==='hi')u.lang='hi-IN';else if(lang==='mr')u.lang='mr-IN';else u.lang='en-US';u.rate=0.9;speechSynthesis.speak(u)}
+function sw(n){document.querySelectorAll('.ptab').forEach((t,i)=>{t.className='ptab'+(i===n?' active':'');if(i===n&&n===1)t.classList.add('pp');if(i===n&&(n===2||n===3))t.classList.add('rr')});document.querySelectorAll('.pane').forEach((p,i)=>p.className='pane'+(i===n?' active':''))}
+</script>
+</body>
+</html>
